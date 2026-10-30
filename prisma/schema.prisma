@@ -1,0 +1,379 @@
+// AICTE — Approval & Compliance Command Centre
+//
+// NOTE FOR PORTABILITY:
+// This schema is written for SQLite so the project runs with ZERO infrastructure
+// (no Docker, no Postgres server). Two SQLite rules are respected:
+//   1. No `enum` blocks  -> enum-like columns are Strings, validated in TS (see src/lib/constants.ts)
+//   2. No scalar lists   -> list payloads are JSON stored in String columns (see src/lib/json.ts)
+// To move to PostgreSQL: change provider to "postgresql", swap the String enum columns
+// for real enums (identical names/values are already used), and keep everything else as-is.
+// The application code does not change at all.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Geography & organisations
+// ---------------------------------------------------------------------------
+
+model Region {
+  id           String        @id @default(cuid())
+  name         String
+  code         String        @unique
+  users        User[]
+  institutions Institution[]
+  applications Application[]
+}
+
+model Institution {
+  id           String        @id @default(cuid())
+  name         String
+  aisheCode    String        @unique
+  type         String // NEW | EXISTING
+  city         String
+  state        String
+  latitude     Float?
+  longitude    Float?
+  // Visibility flag ONLY. It is never derived from the trust score and never
+  // triggers a punitive action by itself — see Feature 8 (Suspension Recommendation).
+  status       String        @default("ACTIVE") // ACTIVE | NON_COMPLIANT | SUSPENDED
+  trustScore   Int           @default(100)
+  regionId     String
+  region       Region        @relation(fields: [regionId], references: [id])
+  users        User[]
+  applications Application[]
+  undertakings Undertaking[]
+  documents    Document[]
+  trustEvents  TrustScoreEvent[]
+  createdAt    DateTime      @default(now())
+}
+
+/// Feature 1 — event-sourced trust score.
+/// Institution.trustScore is a cached derivation of these events; this table is
+/// the source of truth and powers the "why?" popover in the UI.
+model TrustScoreEvent {
+  id            String      @id @default(cuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  applicationId String? // lets us cap deficiency deductions per application
+  event         String // LOR | DEFICIENCY_ITEM | UNDERTAKING_OVERDUE | DOC_EXPIRED | COMPLIANCE_ON_TIME | APPEAL_UPHELD
+  delta         Int
+  note          String?
+  createdAt     DateTime    @default(now())
+}
+
+/// Feature 1 — event-sourced trust score. The cached Institution.trustScore is a
+/// derived value; this table is the source of truth and drives the explanation UI.
+
+// ---------------------------------------------------------------------------
+// People
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          String // see ROLES in src/lib/constants.ts
+  designation   String?
+  regionId      String?
+  region        Region?   @relation(fields: [regionId], references: [id])
+  institutionId String?
+  institution   Institution? @relation(fields: [institutionId], references: [id])
+  // Feature 5 — officer workload cap. An officer is not auto-assigned past this.
+  maxActiveCases Int       @default(10)
+  notifications Notification[]
+  expert        Expert?
+  createdAt    DateTime    @default(now())
+
+  assignedApplications Application[] @relation("AssignedOfficer")
+}
+
+// ---------------------------------------------------------------------------
+// Rule engine
+// ---------------------------------------------------------------------------
+
+model RouteTemplate {
+  id              String         @id @default(cuid())
+  key             String
+  name            String
+  version         Int            @default(1)
+  status          String         @default("DRAFT") // DRAFT | PUBLISHED | ARCHIVED
+  stages          String // JSON: string[] ordered stage keys
+  slaDays         String // JSON: Record<stageKey, number>
+  appTypes        String // JSON: string[] application types this route matches
+  institutionTypes String       @default("[]") // JSON: string[] NEW | EXISTING
+  changeNote      String?
+  publishedAt     DateTime?
+  publishedBy     String?
+  createdAt       DateTime       @default(now())
+  applications    Application[]
+
+  @@unique([key, version])
+}
+
+// ---------------------------------------------------------------------------
+// The case file
+// ---------------------------------------------------------------------------
+
+model Application {
+  id              String    @id @default(cuid())
+  refNumber       String    @unique
+  type            String // NEW_INSTITUTION | RENEWAL | EXTENSION_INTAKE | NEW_COURSE
+  status          String    @default("IN_PROGRESS") // IN_PROGRESS | AWAITING_INSTITUTION | APPROVED | CONDITIONALLY_APPROVED | REJECTED
+  currentStage    String // current stage key
+  stageEnteredAt  DateTime  @default(now())
+  dueAt           DateTime?
+  escalationLevel Int       @default(0)
+  remindedTiers   String    @default("[]") // JSON: number[] — idempotent SLA reminders
+
+  // ---- RULE VERSIONING: the route + SLAs are SNAPSHOTTED at submission time.
+  // Publishing a new APH rule version never changes an in-flight application.
+  routeSnapshot   String // JSON: string[]
+  slaSnapshot     String // JSON: Record<stageKey, number>
+  routeKey        String?
+  routeVersion    Int?
+  routeTemplateId String?
+  routeTemplate   RouteTemplate? @relation(fields: [routeTemplateId], references: [id])
+
+  institutionId   String
+  institution     Institution @relation(fields: [institutionId], references: [id])
+  regionId        String
+  region          Region      @relation(fields: [regionId], references: [id])
+  assignedToId    String?
+  assignedTo      User?       @relation("AssignedOfficer", fields: [assignedToId], references: [id])
+
+  programName     String    @default("")
+  intake          Int       @default(0)
+  submittedAt     DateTime  @default(now())
+  decidedAt       DateTime?
+  decisionNote    String?
+
+  transitions     StageTransition[]
+  evcVisit        EvcVisit?
+  undertakings    Undertaking[]
+  letters         Letter[] // Feature 8
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model StageTransition {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStage     String?
+  toStage       String
+  action        String
+  actorName     String
+  actorRole     String
+  reason        String?
+  createdAt     DateTime    @default(now())
+}
+
+/// Feature 4 — pool of empanelled experts for Expert Visit Committees.
+model Expert {
+  id            String   @id @default(cuid())
+  name          String
+  designation   String // PROFESSOR_LEVEL | ASSOCIATE_PROF | ARCHITECT_CIVIL
+  state         String
+  city          String
+  latitude      Float?
+  longitude     Float?
+  busyRanges    String   @default("[]") // JSON: [{ from: ISO, to: ISO }]
+  conflictStates String  @default("[]") // JSON: string[] — states this expert must not be sent to
+  maxPerMonth   Int      @default(4)
+  empanelledAt  DateTime @default(now())
+  userId        String?  @unique // experts with a portal account are notified directly
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+}
+
+model EvcVisit {
+  id             String      @id @default(cuid())
+  applicationId  String      @unique
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status         String      @default("QUEUED") // QUEUED | SCHEDULED | COMPLETED | OVERDUE
+  scheduledFor   DateTime?
+  dueAt          DateTime?
+  members        String      @default("[]") // JSON: string[]
+  experts        String      @default("[]") // Feature 4 — JSON: allocated panel [{ id, name, role, designation, score, reasons }]
+  allocatedAt    DateTime?   // Feature 4 — when the coordinator confirmed the panel
+  allocatedBy    String?     // Feature 4 — who confirmed it
+  reportText     String?
+  recommendation String? // SATISFACTORY | DEFICIENT
+  completedAt    DateTime?
+  createdAt      DateTime    @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Compliance: undertakings (pre-approval deficiencies AND post-approval conditions)
+// ---------------------------------------------------------------------------
+
+model Undertaking {
+  id            String    @id @default(cuid())
+  title         String
+  description   String
+  phase         String    @default("POST") // PRE (deficiency) | POST (condition of approval)
+  dueAt         DateTime
+  status        String    @default("PENDING") // PENDING | SUBMITTED | VERIFIED | OVERDUE | ESCALATED
+  remindedTiers String    @default("[]") // JSON: number[] — idempotent reminders
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  submissions   ComplianceSubmission[]
+  createdAt     DateTime  @default(now())
+  verifiedAt    DateTime?
+  verifiedBy    String?
+}
+
+model ComplianceSubmission {
+  id            String      @id @default(cuid())
+  undertakingId String
+  undertaking   Undertaking @relation(fields: [undertakingId], references: [id], onDelete: Cascade)
+  fileName      String
+  note          String?
+  status        String      @default("SUBMITTED") // SUBMITTED | VERIFIED | REJECTED
+  rejectionNote String?
+  submittedAt   DateTime    @default(now())
+  submittedBy   String?
+  verifiedBy    String?
+  verifiedAt    DateTime?
+}
+
+// ---------------------------------------------------------------------------
+// Document expiry register
+// ---------------------------------------------------------------------------
+
+model Document {
+  id            String    @id @default(cuid())
+  type          String // LEASE_DEED | FIRE_SAFETY | LAND_CERTIFICATE | BUILDING_PLAN | AFFILIATION | NA
+  fileName      String
+  expiresAt     DateTime
+  status        String    @default("VALID") // VALID | EXPIRING_SOON | RENEWAL_SUBMITTED | EXPIRED
+  alertedTiers  String    @default("[]") // JSON: number[]
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  renewalUrl    String?
+  renewalNote   String?
+  renewalSubmittedAt DateTime?
+  rejectionNote String?
+  verifiedBy    String?
+
+  // Feature 2 — OCR date extraction and conflict detection
+  enteredDate       DateTime? // the date the institution typed in
+  ocrExtractedDate  DateTime? // the date read off the uploaded document
+  ocrConfidence     Float?    // 0..1, from the extraction provider
+  dateConflict      Boolean   @default(false)
+  officerConfirmed  Boolean   @default(false) // a human has resolved the conflict
+
+  // Feature 3 — AI document summary (advisory, always labelled)
+  aiSummary     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Feature 6 — magic links
+// ---------------------------------------------------------------------------
+
+/// A single-purpose, expiring link sent to an institution so it can act without
+/// logging in. Using one is recorded in the audit log with actorName
+/// "Institution (magic link)".
+model MagicLink {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  purpose   String // UNDERTAKING_RESPONSE | DOCUMENT_RENEWAL
+  entityId  String // undertaking id or document id
+  institutionId String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Feature 8 — drafted letters and suspension recommendations
+// ---------------------------------------------------------------------------
+
+/// A letter drafted by the system and sent by a human. NEVER auto-sent:
+/// it only becomes SENT when an officer reviews it and clicks "Mark as Sent".
+model Letter {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  type          String // DEFICIENCY_NOTICE | SHOW_CAUSE | CONDITIONAL_APPROVAL
+  subject       String
+  body          String // rendered HTML/text, stored exactly as sent
+  status        String      @default("DRAFT") // DRAFT | SENT
+  generatedBy   String      @default("SYSTEM")
+  reviewedBy    String?
+  sentBy        String?
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+}
+
+/// A recommendation the system raises for a human to accept or reject.
+/// Used for suspension recommendations: the engine proposes, the Competent
+/// Authority disposes. Nothing is suspended unless they approve.
+model Task {
+  id            String    @id @default(cuid())
+  type          String // SUSPENSION_RECOMMENDATION
+  title         String
+  body          String
+  entityType    String
+  entityId      String
+  institutionId String?
+  toRole        String
+  status        String    @default("OPEN") // OPEN | APPROVED | REJECTED
+  decidedBy     String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime  @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Cross-cutting
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Escalation {
+  id         String    @id @default(cuid())
+  entityType String // APPLICATION | EVC | UNDERTAKING | DOCUMENT
+  entityId   String
+  level      Int
+  toRole     String
+  reason     String
+  status     String    @default("OPEN") // OPEN | RESOLVED
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  resolvedBy String?
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorName  String
+  action     String
+  entityType String
+  entityId   String
+  metadata   String   @default("{}") // JSON
+  prevHash   String?
+  hash       String
+  createdAt  DateTime @default(now())
+}

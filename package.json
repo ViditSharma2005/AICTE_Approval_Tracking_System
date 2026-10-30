@@ -1,0 +1,51 @@
+{
+  "name": "aicte-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AICTE \u2014 Approval & Compliance Command Centre (workflow engine prototype)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "setup": "npm install && prisma generate && prisma migrate deploy && npm run db:seed",
+    "demo": "cross-env DEMO_MODE=true DEMO_DAY_MS=10000 next dev",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force --skip-generate --skip-seed && npm run db:seed",
+    "db:studio": "prisma studio",
+    "test": "tsx --test tests/*.test.ts",
+    "db:migrate": "prisma migrate dev"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.140",
+    "@ai-sdk/openai": "^3.0.135",
+    "@prisma/client": "6.19.3",
+    "ai": "^6.0.319",
+    "bcryptjs": "3.0.3",
+    "clsx": "2.1.1",
+    "handlebars": "^4.7.10",
+    "jose": "6.2.14",
+    "lucide-react": "0.468.0",
+    "next": "15.5.28",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwind-merge": "2.5.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.10",
+    "@types/react": "19.0.2",
+    "@types/react-dom": "19.0.2",
+    "autoprefixer": "10.4.20",
+    "cross-env": "7.0.3",
+    "postcss": "8.4.49",
+    "prisma": "6.19.3",
+    "tailwindcss": "3.4.19",
+    "tsx": "4.23.15",
+    "typescript": "5.7.2"
+  }
+}

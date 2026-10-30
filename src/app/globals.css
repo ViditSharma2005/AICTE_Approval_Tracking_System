@@ -1,0 +1,173 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --navy: #0b2e59;
+  --indigo: #4f46e5;
+}
+
+* {
+  border-color: #e2e8f0;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: #f4f6fa;
+  color: #12203a;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Government trust signals ------------------------------------------------ */
+
+.gov-strip {
+  height: 48px;
+  background: linear-gradient(180deg, #0b2e59 0%, #0a2749 100%);
+  color: #fff;
+}
+
+.tricolor {
+  height: 3px;
+  background: linear-gradient(90deg, #ff9933 0 33.33%, #ffffff 33.33% 66.66%, #138808 66.66% 100%);
+}
+
+.seal-ring {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
+
+/* Canva-ish surfaces ----------------------------------------------------- */
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-card;
+  }
+
+  .card-pad {
+    @apply p-5;
+  }
+
+  .card-title {
+    @apply text-[15px] font-semibold text-ink;
+  }
+
+  .card-sub {
+    @apply mt-0.5 text-xs text-ink-faint;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-soft;
+  }
+
+  .hint {
+    @apply mt-1 text-xs text-ink-faint;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-ink
+           placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2
+           focus:ring-indigo-100 disabled:bg-slate-50;
+  }
+
+  .select {
+    @apply input appearance-none bg-white pr-8;
+  }
+
+  .textarea {
+    @apply input min-h-[92px] resize-y leading-relaxed;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold
+           transition-all disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply btn bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800;
+  }
+  .btn-navy {
+    @apply btn bg-navy text-white hover:bg-navy-700;
+  }
+  .btn-secondary {
+    @apply btn border border-slate-300 bg-white text-ink hover:bg-slate-50;
+  }
+  .btn-ghost {
+    @apply btn text-ink-soft hover:bg-slate-100 hover:text-ink;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-success {
+    @apply btn bg-emerald-600 text-white hover:bg-emerald-700;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1.5 text-[13px];
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold
+           uppercase tracking-wide;
+  }
+  .pill-green { @apply pill bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200; }
+  .pill-amber { @apply pill bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200; }
+  .pill-red { @apply pill bg-red-50 text-red-700 ring-1 ring-inset ring-red-200; }
+  .pill-blue { @apply pill bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200; }
+  .pill-indigo { @apply pill bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200; }
+  .pill-violet { @apply pill bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200; }
+  .pill-slate { @apply pill bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200; }
+  .pill-orange { @apply pill bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200; }
+
+  .th {
+    @apply whitespace-nowrap px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-faint;
+  }
+  .td {
+    @apply px-4 py-3 text-sm text-ink align-middle;
+  }
+  .row-hover {
+    @apply transition-colors hover:bg-slate-50/80;
+  }
+
+  .link {
+    @apply font-medium text-indigo-600 hover:text-indigo-800 hover:underline;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-ink-soft;
+  }
+}
+
+/* tables scroll nicely on small screens */
+.table-wrap {
+  overflow-x: auto;
+}
+
+/* Printable case summary ------------------------------------------------- */
+
+@media print {
+  body {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .card {
+    border-color: #cbd5e1;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}
+
+.print-only {
+  display: none;
+}
+
+/* tabular numbers for all countdowns */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
