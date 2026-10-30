@@ -74,6 +74,27 @@ The full list is also rendered on the login screen — click any account to load
 
 ---
 
+### Vercel deployment
+
+The project has been successfully built and deployed on Vercel. The production build completes
+Next.js server-file tracing, serverless-function generation, and static-file collection.
+
+For a Vercel deployment, configure these environment variables in the project settings:
+
+- `DATABASE_URL` — use a hosted PostgreSQL connection for persistent production data; the bundled
+  SQLite database is intended for local demos.
+- `SESSION_SECRET` — replace the development fallback with a long, random secret.
+- `DEMO_MODE=false` — keep real 24-hour workflow timing in production.
+- `OPENAI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` — optional; without either key, the deterministic
+  offline AI engines remain available.
+
+After changing Prisma schema or migrations, deploy the migration against the hosted database before
+using the new application version:
+
+```bash
+npx prisma migrate deploy
+```
+
 ## 2. What is actually built
 
 ### The workflow engine (not hard-coded stages)
