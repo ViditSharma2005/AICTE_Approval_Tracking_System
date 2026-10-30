@@ -35,7 +35,7 @@ export async function getApplicationStatus(args: { refNumber: string }): Promise
   if (!ctx) return { ok: false, message: "No authenticated session." };
 
   const app = await db.application.findFirst({
-    where: { ...ctx.appWhere, refNumber: { contains: args.refNumber } },
+    where: { ...ctx.appWhere, refNumber: { contains: args.refNumber, mode: "insensitive" } },
     include: {
       institution: { select: { name: true, city: true, trustScore: true } },
       assignedTo: { select: { name: true } },
@@ -165,7 +165,7 @@ export async function getTrustScore(args: { institutionName?: string }): Promise
   if (ctx.user.role === "INSTITUTION") {
     institutionId = ctx.user.institutionId;
   } else if (args.institutionName) {
-    const inst = await db.institution.findFirst({ where: { name: { contains: args.institutionName } }, select: { id: true } });
+    const inst = await db.institution.findFirst({ where: { name: { contains: args.institutionName, mode: "insensitive" } }, select: { id: true } });
     institutionId = inst?.id ?? null;
   }
   if (!institutionId) return { ok: false, message: "Name the institution you want the trust score for." };
@@ -196,7 +196,7 @@ export async function explainDeficiency(args: { undertakingId?: string; title?: 
 
   const where: Record<string, unknown> = {};
   if (args.undertakingId) where.id = args.undertakingId;
-  else if (args.title) where.title = { contains: args.title };
+  else if (args.title) where.title = { contains: args.title, mode: "insensitive" };
   else return { ok: false, message: "Give me the deficiency title or id." };
 
   const whereScoped =

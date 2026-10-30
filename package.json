@@ -5,17 +5,19 @@
   "description": "AICTE \u2014 Approval & Compliance Command Centre (workflow engine prototype)",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
-    "setup": "npm install && prisma generate && prisma migrate deploy && npm run db:seed",
+    "setup": "npm install && prisma migrate deploy && npm run db:seed",
     "demo": "cross-env DEMO_MODE=true DEMO_DAY_MS=10000 next dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force --skip-generate --skip-seed && npm run db:seed",
     "db:studio": "prisma studio",
     "test": "tsx --test tests/*.test.ts",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

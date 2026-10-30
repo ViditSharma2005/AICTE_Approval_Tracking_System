@@ -144,9 +144,9 @@ export async function getApplications(
 
   if (filters.q) {
     where.OR = [
-      { refNumber: { contains: filters.q } },
-      { programName: { contains: filters.q } },
-      { institution: { name: { contains: filters.q } } },
+      { refNumber: { contains: filters.q, mode: "insensitive" } },
+      { programName: { contains: filters.q, mode: "insensitive" } },
+      { institution: { name: { contains: filters.q, mode: "insensitive" } } },
     ];
   }
   if (filters.stage) where.currentStage = filters.stage;

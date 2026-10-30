@@ -1,21 +1,23 @@
 // AICTE — Approval & Compliance Command Centre
 //
-// NOTE FOR PORTABILITY:
-// This schema is written for SQLite so the project runs with ZERO infrastructure
-// (no Docker, no Postgres server). Two SQLite rules are respected:
+// DATABASE: PostgreSQL (works locally and on Vercel with Neon / Supabase / any Postgres).
+//   DATABASE_URL           -> pooled connection, used by the app at runtime
+//   DATABASE_URL_UNPOOLED  -> direct connection, used by `prisma migrate` (no pgbouncer)
+// These two names match what the Neon integration on Vercel injects automatically.
+// Locally, both can be the same connection string.
+//
+// Portability notes (kept from the original SQLite design):
 //   1. No `enum` blocks  -> enum-like columns are Strings, validated in TS (see src/lib/constants.ts)
 //   2. No scalar lists   -> list payloads are JSON stored in String columns (see src/lib/json.ts)
-// To move to PostgreSQL: change provider to "postgresql", swap the String enum columns
-// for real enums (identical names/values are already used), and keep everything else as-is.
-// The application code does not change at all.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 // ---------------------------------------------------------------------------
