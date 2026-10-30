@@ -17,24 +17,28 @@ and every consequential act is a named human decision recorded in the audit trai
 
 ## 1. Quick start
 
-Requires **Node.js 18.18+** (built and tested on Node 20). No Docker, no database server — it runs on
-SQLite so it works offline, on a laptop, on a judging panel's machine.
+Requires **Node.js 18.18+** (built and tested on Node 20/22) and a **PostgreSQL** database. The
+easiest option is a free [Neon](https://neon.tech) database: the same one works locally and on Vercel.
+For a fully offline machine, run Postgres locally:
+`docker run --name aicte-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16`.
 
 ```bash
-unzip aicte-portal.zip
-cd aicte-portal
+git clone https://github.com/ViditSharma2005/AICTE_Approval_Tracking_System.git
+cd AICTE_Approval_Tracking_System
 
-npm run setup     # installs deps, generates the Prisma client, applies migrations, seeds
-npm run dev       # http://localhost:3000
+cp .env.example .env   # then fill in DATABASE_URL, DATABASE_URL_UNPOOLED and SESSION_SECRET
+npm run setup          # installs deps (generates the Prisma client), applies migrations, seeds
+npm run dev            # http://localhost:3000
 ```
+
+For local Docker Postgres, set both URLs to
+`postgresql://postgres:postgres@localhost:5432/aicte?schema=public`.
 
 Open **http://localhost:3000**, click any demo account, and press **Sign in** (the password
 `demo123` is pre-filled).
 
-`npm run setup` = `npm install` + `prisma generate` + `prisma migrate deploy` + `prisma db seed`.
-It is safe to re-run. A pre-seeded `prisma/dev.db` ships in the zip, so the first run has no
-migrations to apply; delete that file and `npm run setup` rebuilds the whole schema from the seven
-migrations in `prisma/migrations/`.
+`npm run setup` = `npm install` (its `postinstall` runs `prisma generate`) + `prisma migrate deploy` +
+the seed. Note that **the seed wipes and re-creates all demo data**.
 
 **No API keys are needed.** The AI features ship with deterministic offline engines and switch to a live
 model automatically if you set one (see §3).
@@ -76,24 +80,46 @@ The full list is also rendered on the login screen — click any account to load
 
 ### Vercel deployment
 
-The project has been successfully built and deployed on Vercel. The production build completes
-Next.js server-file tracing, serverless-function generation, and static-file collection.
+Vercel runs the app as serverless functions with **no persistent disk**, so SQLite cannot be used
+there. The project uses PostgreSQL. Its build wiring:
 
-For a Vercel deployment, configure these environment variables in the project settings:
+- `postinstall: prisma generate`: Vercel caches `node_modules`, so without this the Prisma Client is
+  stale or missing and the type-check fails (`Parameter 't' implicitly has an 'any' type` in
+  `prisma/seed.ts`).
+- `vercel-build: prisma generate && prisma migrate deploy && next build`: Vercel runs this instead
+  of `build`, so every deployment applies pending migrations before building.
 
-- `DATABASE_URL` — use a hosted PostgreSQL connection for persistent production data; the bundled
-  SQLite database is intended for local demos.
-- `SESSION_SECRET` — replace the development fallback with a long, random secret.
-- `DEMO_MODE=false` — keep real 24-hour workflow timing in production.
-- `OPENAI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` — optional; without either key, the deterministic
-  offline AI engines remain available.
+**Fresh deployment, step by step**
 
-After changing Prisma schema or migrations, deploy the migration against the hosted database before
-using the new application version:
+1. **Create the database.** Vercel → *Storage* → *Create Database* → **Neon** (free), and connect it to
+   the project. This injects `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED` (direct)
+   automatically. With your own Neon/Supabase database, add those two variables by hand.
+2. **Import the repo.** Vercel → *Add New* → *Project* → pick this repo. Framework: **Next.js**. Leave
+   the Build/Install/Output commands at their defaults (`vercel-build` is detected automatically) and
+   the Root Directory at `./`.
+3. **Environment variables** (Settings → Environment Variables, for Production *and* Preview):
 
-```bash
-npx prisma migrate deploy
-```
+   | Name | Value |
+   | --- | --- |
+   | `DATABASE_URL` | pooled Postgres URL (set by the Neon integration) |
+   | `DATABASE_URL_UNPOOLED` | direct Postgres URL (set by the Neon integration) |
+   | `SESSION_SECRET` | a long random string (`openssl rand -base64 32`) |
+   | `DEMO_MODE` | `false` (or `true` for a time-compressed judging demo) |
+   | `DEMO_DAY_MS` | `10000` |
+   | `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` | optional |
+
+4. **Deploy.** The build creates all tables (`prisma migrate deploy`).
+5. **Seed once, from your machine**, pointing at the same database:
+   ```bash
+   # .env contains the Neon DATABASE_URL / DATABASE_URL_UNPOOLED
+   npm install
+   npm run db:seed
+   ```
+   (The seed wipes data, so it is deliberately not part of the build.)
+6. Open the `*.vercel.app` URL and sign in with any demo account (`demo123`).
+
+After a schema change: `npm run db:migrate` locally (creates a migration), commit it, push, and Vercel
+applies it on the next deployment.
 
 ## 2. What is actually built
 
@@ -237,10 +263,9 @@ log it — a missing key never breaks a workflow.
 ```
 aicte-portal/
 ├── prisma/
-│   ├── schema.prisma        # data model (SQLite-portable, documented for Postgres)
-│   ├── migrations/          # 7 migrations: init + one per feature
+│   ├── schema.prisma        # data model (PostgreSQL)
+│   ├── migrations/          # PostgreSQL migrations (single init baseline)
 │   ├── seed.ts              # deterministic demo narrative, not random rows
-│   └── dev.db               # pre-seeded SQLite database (ships so it runs instantly)
 ├── src/
 │   ├── app/
 │   │   ├── login/           # sign-in + one-click demo accounts
@@ -283,7 +308,7 @@ aicte-portal/
 └── tests/workflow.test.ts   # 14 unit tests (npm test)
 ```
 
-Stack: Next.js 15 (App Router) · TypeScript · Prisma · SQLite · Tailwind CSS · lucide-react · jose ·
+Stack: Next.js 15 (App Router) · TypeScript · Prisma · PostgreSQL · Tailwind CSS · lucide-react · jose ·
 bcryptjs · Vercel AI SDK (`ai`, `@ai-sdk/openai`, `@ai-sdk/google`), `zod`, `handlebars`. Charts are
 hand-rolled SVG/HTML — no chart library, so nothing to break mid-demo.
 
@@ -310,10 +335,10 @@ Added for the eight features:
 | `Letter` | 8 | Drafted/issued letters; `SENT` only after an officer marks it |
 | `Task` | 8 | Recommendations requiring a human decision (suspension) |
 
-Two SQLite constraints were respected so the project runs with zero infrastructure: no `enum` blocks
+The schema was originally written for SQLite and keeps its portability rules: no `enum` blocks
 (enum-like columns are `String`, validated by `src/lib/constants.ts`) and no scalar lists (JSON is
-stored in `String` columns via `src/lib/json.ts`). Application code does not change when you move to
-Postgres.
+stored in `String` columns via `src/lib/json.ts`). Text search uses `mode: "insensitive"` so search
+stays case-insensitive on PostgreSQL.
 
 ---
 
@@ -336,16 +361,11 @@ intelligence features.
 
 ---
 
-## 8. Switching to PostgreSQL (optional)
+## 8. Database notes
 
-1. `docker run --name aicte-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16`
-2. In `prisma/schema.prisma`: `provider = "postgresql"`. Optionally promote the enum-like `String`
-   columns into real `enum` blocks (the values in `src/lib/constants.ts` are already the exact names).
-3. `.env`: `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/aicte?schema=public"`
-4. `npx prisma migrate deploy && npm run db:seed`
-
-No application code changes are required. The one thing to re-check is the chatbot's audit-log tool,
-which is restricted by role and would need the same treatment if you add Postgres full-text search.
+The project runs on PostgreSQL (required for Vercel). Optionally, promote the enum-like `String`
+columns into real `enum` blocks; the values in `src/lib/constants.ts` are already the exact names.
+Run `npm run db:migrate` after any schema edit.
 
 ---
 
@@ -353,8 +373,11 @@ which is restricted by role and would need the same treatment if you add Postgre
 
 | Symptom | Fix |
 | --- | --- |
-| `prisma/dev.db` missing or empty | `npm run setup` (rebuilds from migrations) or `npm run db:reset` |
-| "P2022 / column does not exist" after pulling new code | `npx prisma migrate deploy` — the schema changed; never hand-edit `dev.db` |
+| Database empty / login fails with unknown user | `npm run db:seed` (or `npm run db:reset`) against the same `DATABASE_URL` |
+| Vercel build: `Parameter 't' implicitly has an 'any' type` / `@prisma/client did not initialize yet` | Prisma Client not generated: make sure `postinstall: prisma generate` is in `package.json`, then redeploy *without* build cache |
+| Vercel build: `Environment variable not found: DATABASE_URL_UNPOOLED` | Add both DB variables in Vercel (the Neon integration sets them) for Production **and** Preview |
+| Vercel build: `P1001 Can't reach database server` | Wrong URL, or missing `?sslmode=require` |
+| "P2022 / column does not exist" after pulling new code | `npx prisma migrate deploy` — the schema changed; never edit tables by hand |
 | Cannot log in after `npm run build && npm start` on plain HTTP | Very unlikely — cookies are marked Secure only when the request arrives over HTTPS. Force it with `COOKIE_SECURE=true` (or `false`) behind an unusual proxy. |
 | Assistant answers "I don't have that information" | Expected: either no AI key is set (deterministic mode) or no tool returned data. It never invents an answer. |
 | Assistant is slow offline | By design — the offline engine streams in small chunks so the UI behaves identically to the streaming model. |
